@@ -4,6 +4,9 @@ const Octokit = require('@octokit/rest')
 const { spawn } = require('child_process')
 const { join } = require('path')
 
+const util = require('util')
+const setTimeoutPromise = util.promisify(setTimeout)
+
 const config = require('./config/bot.json')
 
 const githubClient = new Octokit({
@@ -32,10 +35,27 @@ function fork (octokit, repo) {
   // TODO manage response
 }
 
-function waitFork (gitUrl) {
+function waitFork (gitData) {
+  const maxRetry = 5
+  const retryAfter = 1000
+
   return new Promise((resolve, reject) => {
-    // TODO check if the forked repo is ready HEAD http request
-    setTimeout(() => resolve(gitUrl), 10000)
+    let tentative = 0
+    const checkStatus = () => {
+      return githubClient.request(`HEAD ${gitData.url}`)
+        .catch(err => {
+          if (tentative < maxRetry) {
+            tentative++
+            return setTimeoutPromise(retryAfter)
+              .then(() => checkStatus())
+          }
+          throw err
+        })
+    }
+
+    checkStatus()
+      .then(resolve)
+      .catch(reject)
   })
 }
 
@@ -56,5 +76,6 @@ function clone (gitUrl, to) {
 }
 
 function updateSourceCode (directory) {
+  console.log(directory)
   // TODO search for .js file to update
 }
